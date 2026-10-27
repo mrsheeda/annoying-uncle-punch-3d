@@ -1,0 +1,10 @@
+build_apk:
+  image: mingc/android-build-box:latest
+  script:
+    - chmod +x gradlew
+    - ./gradlew assembleDebug
+  artifacts:
+    name: annoying-uncle-punch-apk
+    paths:
+      - app/build/outputs/apk/debug/app-debug.apk
+    expire_in: 30 days

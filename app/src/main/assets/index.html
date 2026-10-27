@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Annoying Uncle Punch 3D</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@700;800&display=swap">
+<style>
+/* Layout: full-screen WebGL stage (shelves of uncles in depth, glove launcher in front), slim HUD on top, one centered card for menu / briefing / result. Single bright cartoon look by choice. */
+:root {
+  --bg: #2a1f3d; --card: #fff6e4; --ink: #2b1d2e; --muted: #6f5b6f; --pink: #e8506f; --gold: #f2b82c; --teal: #1f9e9a; --lock: #cdbfae;
+  --display: 'Lilita One', 'Arial Rounded MT Bold', 'Trebuchet MS', sans-serif;
+  --body: 'Nunito', 'Trebuchet MS', system-ui, sans-serif;
+  color-scheme: light;
+}
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); font-weight: 700; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+#stage { position: absolute; inset: 0; background: var(--bg); }
+#stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+#hud {
+  position: absolute; top: 0; left: 0; right: 0; box-sizing: border-box; padding-block: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.4); pointer-events: none;
+}
+#hud[hidden] { display: none; }
+#hud .pill { pointer-events: auto; }
+#lvlName { font-family: var(--display); font-size: 21px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+#counts { display: flex; flex-direction: column; align-items: flex-end; font-size: 13px; letter-spacing: .05em; text-transform: uppercase; font-variant-numeric: tabular-nums; line-height: 1.25; }
+#counts b { font-family: var(--display); font-weight: 400; font-size: 20px; letter-spacing: 0; }
+.pill { appearance: none; border: 0; cursor: pointer; font-family: var(--display); font-size: 16px; color: var(--ink); background: var(--card); padding: 8px 14px; border-radius: 999px; min-height: 40px; box-shadow: 0 3px 0 rgba(0,0,0,.3); }
+#overlay {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding-block: 16px; overflow: auto; background: rgba(24,14,36,.55);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+#overlay[hidden] { display: none; }
+.card { width: min(100%, 440px); box-sizing: border-box; background: var(--card); border-radius: 22px; padding: 22px 20px; box-shadow: 0 8px 0 rgba(0,0,0,.28); display: flex; flex-direction: column; gap: 14px; margin: auto; }
+.card h1, .card h2 { font-family: var(--display); font-weight: 400; margin: 0; line-height: 1; text-wrap: balance; }
+.card h1 { font-size: 44px; color: var(--pink); text-shadow: 0 3px 0 rgba(43,29,46,.14); }
+.card h2 { font-size: 34px; }
+.card p { margin: 0; font-size: 15px; line-height: 1.45; color: var(--muted); }
+.grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.tile { appearance: none; border: 0; cursor: pointer; color: #fff; background: var(--teal); border-radius: 12px; padding: 8px 2px 6px; box-shadow: 0 3px 0 rgba(0,0,0,.25); display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 58px; }
+.tile .n { font-family: var(--display); font-size: 22px; line-height: 1; }
+.tile .st { font-size: 11px; color: var(--gold); text-shadow: 0 1px 0 rgba(0,0,0,.3); line-height: 1; }
+.tile.cur { background: var(--pink); }
+.tile[disabled] { background: var(--lock); cursor: not-allowed; box-shadow: 0 3px 0 rgba(0,0,0,.12); }
+.btn { appearance: none; border: 0; cursor: pointer; font-family: var(--display); font-size: 24px; color: #fff; background: var(--pink); padding: 12px 18px; border-radius: 16px; min-height: 52px; box-shadow: 0 4px 0 rgba(0,0,0,.25); }
+.btn.alt { background: var(--teal); } .btn.ghost { background: #eadfcb; color: var(--ink); }
+.row { display: flex; gap: 10px; flex-wrap: wrap; } .row .btn { flex: 1 1 120px; }
+.nav { align-items: center; flex-wrap: nowrap; } .nav .btn { flex: 0 0 56px; padding: 6px; } .nav .big { flex: 1; }
+.jump input { flex: 2 1 140px; min-width: 0; box-sizing: border-box; font: inherit; font-size: 18px; padding: 12px 14px; border-radius: 14px; border: 3px solid #d9ccb7; background: #fff; color: var(--ink); }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+.rules { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; font-size: 14px; }
+.stars { font-size: 44px; color: var(--gold); letter-spacing: 6px; text-shadow: 0 3px 0 rgba(0,0,0,.18); text-align: center; }
+.stars .off { color: #d9ccb7; }
+.big { font-family: var(--display); font-size: 20px; text-align: center; }
+</style>
+<style>[hidden]{display:none!important}html,body{margin:0;height:100%}</style>
+</head><body>
+
+
+<div id="stage"></div>
+
+<div id="hud" hidden>
+  <button class="pill" id="menuBtn" type="button">Menu</button>
+  <div id="lvlName"></div>
+  <div id="counts"><span>Gloves <b id="gl">0</b></span><span>Uncles <b id="un">0</b></span></div>
+</div>
+
+<div id="overlay"></div>
+
+<script src="three.min.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var stage = $('stage'), ov = $('overlay');
+
+  /* ---------- levels (same data model as the 2D game; x is 0..400, p is the shelf index) ---------- */
+  function P(y) { return { y: y }; }
+  var LEVELS = [
+    { name: 'Standing Around', bg: 'living', ammo: 3, plats: [P(340)], uncles: [{ t: 'stand', p: 0, x: 250 }] },
+    { name: 'Sofa Time', bg: 'living', ammo: 5, plats: [P(360)], uncles: [{ t: 'sit', p: 0, x: 105 }, { t: 'stand', p: 0, x: 290 }] },
+    { name: 'Morning Jog', bg: 'park', ammo: 6, plats: [P(300), P(450)], uncles: [{ t: 'run', p: 0, x: 120, sp: 90 }, { t: 'run', p: 1, x: 280, sp: 70 }] },
+    { name: 'Dance Party', bg: 'wedding', ammo: 7, plats: [P(320), P(460)], uncles: [{ t: 'dance', p: 0, x: 100 }, { t: 'dance', p: 0, x: 290 }, { t: 'stand', p: 1, x: 200, hp: 2 }] },
+    { name: 'Nap Time', bg: 'bedroom', ammo: 7, plats: [P(310), P(450)], uncles: [{ t: 'sleep', p: 0, x: 120 }, { t: 'sit', p: 0, x: 300 }, { t: 'sleep', p: 1, x: 260 }] },
+    { name: 'Trampoline', bg: 'park', ammo: 8, plats: [P(450)], uncles: [{ t: 'jump', p: 0, x: 80, ph: 0 }, { t: 'jump', p: 0, x: 200, ph: 2 }, { t: 'jump', p: 0, x: 320, ph: 4 }] },
+    { name: 'Peek-a-Boo', bg: 'roof', ammo: 9, plats: [P(300), P(450)], uncles: [{ t: 'peek', p: 0, x: 90, off: 0 }, { t: 'peek', p: 0, x: 310, off: 1.4 }, { t: 'peek', p: 1, x: 200, off: .7 }, { t: 'stand', p: 1, x: 340 }] },
+    { name: 'Playground', bg: 'playground', ammo: 9, plats: [P(470)], uncles: [{ t: 'swing', p: -1, x: 105, ph: 0 }, { t: 'swing', p: -1, x: 295, ph: 2.2 }, { t: 'run', p: 0, x: 200, sp: 80 }] },
+    { name: 'Gym Bro Uncle', bg: 'gym', ammo: 9, plats: [P(340), P(480)], uncles: [{ t: 'stand', p: 0, x: 210, hp: 4, big: true }, { t: 'run', p: 1, x: 120, sp: 110 }, { t: 'dance', p: 1, x: 300 }] },
+    { name: 'Family Chaos', bg: 'disco', ammo: 12, plats: [P(280), P(390), P(500)], uncles: [{ t: 'run', p: 0, x: 100, sp: 100 }, { t: 'sleep', p: 0, x: 300 }, { t: 'peek', p: 1, x: 90, off: 0 }, { t: 'jump', p: 1, x: 300, ph: 1 }, { t: 'dance', p: 2, x: 120 }, { t: 'stand', p: 2, x: 300, hp: 2 }] }
+  ];
+  var BGS = { living: ['#f0c98f', '#b57a4a'], park: ['#8ed1f0', '#6fbf6a'], wedding: ['#8c2a52', '#3d1030'], bedroom: ['#6f86c9', '#2e3a6e'], roof: ['#ff9d6b', '#4a3a6a'], playground: ['#9fdcf5', '#7cc86a'], gym: ['#c4cad3', '#6a7380'], disco: ['#5a2f9a', '#1d0b3a'] };
+  var GROUND = { living: 0x9a6a42, park: 0x5fae5a, wedding: 0x5a1630, bedroom: 0x2e3a6e, roof: 0x4a3a6a, playground: 0x6cbb60, gym: 0x59616e, disco: 0x241046 };
+  var LABELS = { stand: 'Nosy Uncle', sit: 'Chai Uncle', run: 'Jogging Uncle', dance: 'Dance Uncle', sleep: 'Sleepy Uncle', jump: 'Bouncy Uncle', peek: 'Sneaky Uncle', swing: 'Swing Uncle', boss: 'Big Uncle' };
+  var SHIRTS = [0x3d7ea6, 0xc0563a, 0x4f8a5b, 0x8a5fb0, 0xd9a21b, 0x2f6bb0];
+
+  /* ---------- endless level generator (identical to the 2D game) ---------- */
+  var TOTAL = 3000, cache = {};
+  function rngOf(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  var ADJ = ['Noisy', 'Sneaky', 'Sleepy', 'Bouncy', 'Chatty', 'Grumpy', 'Cheeky', 'Fussy', 'Loud', 'Nosy'];
+  var PLACE = ['Dinner', 'Wedding', 'Picnic', 'Reunion', 'Rooftop', 'Garden', 'Party', 'Gym', 'Bazaar', 'Birthday'];
+  function gen(i) {
+    var n = i + 1, r = rngOf(n * 7919 + 101);
+    var rr = function (a, b) { return a + r() * (b - a); }, ri = function (a, b) { return Math.floor(rr(a, b + 1)); };
+    var boss = n % 10 === 0, count = Math.min(9, 2 + Math.floor(n / 70) + ri(0, 2) + (boss ? 1 : 0));
+    var useSwing = !boss && r() < .12, bgKeys = Object.keys(BGS).filter(function (k) { return k !== 'playground'; }), bg, plats;
+    if (useSwing) { bg = 'playground'; plats = [P(470)]; }
+    else {
+      bg = bgKeys[ri(0, bgKeys.length - 1)];
+      var np = count <= 2 ? 1 : count <= 4 ? ri(1, 2) : ri(2, 3);
+      plats = np === 1 ? [P(Math.round(rr(330, 470)))] : np === 2 ? [P(Math.round(rr(290, 330))), P(Math.round(rr(440, 480)))] : [P(280), P(390), P(500)];
+    }
+    var types = ['stand', 'sit', 'run', 'dance', 'sleep', 'jump', 'peek'], uncles = [], used = plats.map(function () { return []; }), swings = 0, totalHp = 0;
+    for (var k = 0; k < count; k++) {
+      var t = types[ri(0, types.length - 1)], big = false;
+      if (useSwing && swings < 2 && r() < .55) { t = 'swing'; swings++; }
+      if (boss && k === 0) { t = 'stand'; big = true; }
+      var p = t === 'swing' ? -1 : ri(0, plats.length - 1), x = null;
+      if (t === 'swing') x = swings === 1 ? 105 : 295;
+      else for (var tr = 0; tr < 24 && x === null; tr++) {
+        var cx = Math.round(t === 'sleep' ? rr(100, 300) : rr(60, 340)), gap = t === 'sleep' ? 150 : 95;
+        if (used[p].every(function (q) { return Math.abs(q - cx) >= gap; })) x = cx;
+        if (tr === 12) p = (p + 1) % plats.length;
+      }
+      if (x === null) continue;
+      if (p >= 0) used[p].push(x);
+      var d = { t: t, p: p, x: x };
+      if (t === 'run') d.sp = Math.round(70 + Math.min(120, n * .05) + rr(0, 30));
+      if (t === 'jump' || t === 'swing') d.ph = rr(0, 6);
+      if (t === 'peek') d.off = rr(0, 3);
+      if (big) { d.big = true; d.hp = Math.min(8, 3 + Math.floor(n / 80)); }
+      else if (r() < Math.min(.4, n / 600)) d.hp = r() < Math.min(.25, n / 2500) ? 3 : 2;
+      totalHp += d.hp || 1; uncles.push(d);
+    }
+    if (!uncles.length) { uncles.push({ t: 'stand', p: 0, x: 200 }); totalHp = 1; }
+    var ammo = totalHp + 1 + Math.ceil(uncles.length * Math.max(.3, .8 - n / 3000));
+    return { name: ADJ[ri(0, ADJ.length - 1)] + ' ' + PLACE[ri(0, PLACE.length - 1)] + (boss ? ' (Boss)' : ''), bg: bg, ammo: ammo, plats: plats, uncles: uncles };
+  }
+  function getLevel(i) { if (i < LEVELS.length) return LEVELS[i]; return cache[i] || (cache[i] = gen(i)); }
+  function needHits(L) { return L.uncles.reduce(function (a, u) { return a + (u.hp || 1); }, 0); }
+
+  var SKEY = 'annoying-uncle-punch-3d', save = { stars: {} };
+  try { var raw = localStorage.getItem(SKEY); if (raw) save = JSON.parse(raw) || save; if (!save.stars) save.stars = {}; } catch (e) { save = { stars: {} }; }
+  function persist() { try { localStorage.setItem(SKEY, JSON.stringify(save)); } catch (e) {} }
+
+  /* ---------- audio ---------- */
+  var actx = null;
+  function ac() { try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); return actx; } catch (e) { return null; } }
+  function tone(f1, f2, d, type, vol) { var a = ac(); if (!a) return; try { var o = a.createOscillator(), g = a.createGain(), t = a.currentTime; o.type = type; o.frequency.setValueAtTime(f1, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f2), t + d); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d); o.connect(g); g.connect(a.destination); o.start(t); o.stop(t + d + .02); } catch (e) {} }
+  function noise(d, vol) { var a = ac(); if (!a) return; try { var n = Math.floor(a.sampleRate * d), b = a.createBuffer(1, n, a.sampleRate), ch = b.getChannelData(0); for (var i = 0; i < n; i++) ch[i] = (Math.random() * 2 - 1) * (1 - i / n); var s = a.createBufferSource(), g = a.createGain(); s.buffer = b; g.gain.value = vol; s.connect(g); g.connect(a.destination); s.start(); } catch (e) {} }
+  var sFire = function () { tone(180, 520, .16, 'triangle', .12); noise(.06, .12); };
+  var sHit = function () { tone(220, 60, .16, 'square', .14); noise(.08, .25); };
+  var sKO = function () { tone(700, 1400, .2, 'triangle', .1); };
+  var sBounce = function () { tone(300, 450, .06, 'sine', .05); };
+  var sWin = function () { tone(500, 800, .15, 'triangle', .12); setTimeout(function () { tone(800, 1300, .3, 'triangle', .12); }, 150); };
+  var sLose = function () { tone(260, 90, .5, 'sawtooth', .1); };
+
+  /* ---------- renderer / scene ---------- */
+  function fail(msg) { show('<div class="card"><h2>3D could not start</h2><p>' + msg + '</p></div>'); }
+  if (typeof THREE === 'undefined') { fail('The 3D engine did not load. Check your connection and reload.'); return; }
+  var renderer;
+  try { renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' }); } catch (e) { fail('This browser could not start WebGL.'); return; }
+  var small = Math.min(window.innerWidth, window.innerHeight) < 700;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, small ? 1.75 : 2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  stage.appendChild(renderer.domElement);
+  var cvs = renderer.domElement;
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(55, 1, .1, 200);
+  var CAM = new THREE.Vector3(0, 4.2, 13), LOOK = new THREE.Vector3(0, 4.0, -4);
+  camera.position.copy(CAM); camera.lookAt(LOOK);
+  scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x7a5a48, .95));
+  var sun = new THREE.DirectionalLight(0xfff0d8, 1.05);
+  sun.position.set(-5, 12, 9); sun.target.position.set(0, 2, -4); sun.castShadow = true;
+  var shs = small ? 1024 : 2048; sun.shadow.mapSize.set(shs, shs);
+  var sc = sun.shadow.camera; sc.left = -9; sc.right = 9; sc.top = 11; sc.bottom = -4; sc.near = 1; sc.far = 40; sun.shadow.bias = -.0005; sun.shadow.normalBias = .03;
+  scene.add(sun, sun.target);
+  function resize() {
+    var w = window.innerWidth, h = window.innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h;
+    var d = 17, halfW = 4.9, hf = Math.atan(halfW / d), vf = 2 * Math.atan(Math.tan(hf) / camera.aspect);
+    camera.fov = Math.max(52, Math.min(80, vf * 180 / Math.PI)); camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resize); resize();
+
+  /* ---------- texture / sprite helpers ---------- */
+  function cvs2(w, h) { var c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+  function rrect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+  function spriteFrom(c, sx, sy) {
+    var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding;
+    var m = new THREE.SpriteMaterial({ map: t, transparent: true, depthTest: false }); var s = new THREE.Sprite(m); s.scale.set(sx, sy, 1); s.renderOrder = 10; return s;
+  }
+  function tagSprite(text, hp, maxHp) {
+    var c = cvs2(256, 80), x = c.getContext('2d'); x.font = '800 30px Nunito, "Trebuchet MS", sans-serif'; var w = Math.min(240, x.measureText(text).width + 34);
+    x.fillStyle = 'rgba(30,18,40,.82)'; rrect(x, 128 - w / 2, 8, w, 42, 21); x.fill(); x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(text, 128, 30);
+    for (var i = 0; i < (maxHp > 1 ? maxHp : 0); i++) { x.fillStyle = i < hp ? '#ff4d6d' : 'rgba(255,255,255,.4)'; x.beginPath(); x.arc(128 - (maxHp - 1) * 14 + i * 28, 66, 8, 0, 7); x.fill(); }
+    return spriteFrom(c, 1.9, .6);
+  }
+  var textCache = {};
+  function textTex(text, color, size) {
+    var k = text + color + size; if (textCache[k]) return textCache[k];
+    var c = cvs2(512, 160), x = c.getContext('2d'); x.font = size + 'px "Lilita One", Impact, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.lineWidth = 12; x.strokeStyle = '#2b1d2e'; x.lineJoin = 'round'; x.strokeText(text, 256, 82); x.fillStyle = color; x.fillText(text, 256, 82);
+    var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return (textCache[k] = t);
+  }
+  function burstTex(text) {
+    var k = 'B' + text; if (textCache[k]) return textCache[k];
+    var c = cvs2(256, 256), x = c.getContext('2d'); x.translate(128, 128); x.rotate(-.12);
+    x.fillStyle = '#ffd23f'; x.strokeStyle = '#2b1d2e'; x.lineWidth = 8; x.beginPath();
+    for (var i = 0; i < 16; i++) { var a = i * Math.PI / 8, r = i % 2 ? 78 : 122; x.lineTo(Math.cos(a) * r, Math.sin(a) * r); } x.closePath(); x.fill(); x.stroke();
+    x.font = '62px "Lilita One", Impact, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineWidth = 12; x.strokeStyle = '#fff'; x.strokeText(text, 0, 4); x.fillStyle = '#e63950'; x.fillText(text, 0, 4);
+    var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return (textCache[k] = t);
+  }
+  var starTex = (function () { var c = cvs2(64, 64), x = c.getContext('2d'); x.fillStyle = '#ffd166'; x.beginPath(); for (var i = 0; i < 10; i++) { var a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 13 : 29; x.lineTo(32 + Math.cos(a) * r, 32 + Math.sin(a) * r); } x.closePath(); x.fill(); x.lineWidth = 3; x.strokeStyle = '#b8801a'; x.stroke(); var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t; })();
+  function gradTex(a, b) { var c = cvs2(4, 256), x = c.getContext('2d'), g = x.createLinearGradient(0, 0, 0, 256); g.addColorStop(0, a); g.addColorStop(1, b); x.fillStyle = g; x.fillRect(0, 0, 4, 256); var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t; }
+
+  /* ---------- materials ---------- */
+  var M = {};
+  function mat(color, rough) { return new THREE.MeshStandardMaterial({ color: color, roughness: rough == null ? .7 : rough, metalness: 0 }); }
+  M.skin = mat(0xe8b48a, .65); M.dark = mat(0x3a2418, .8); M.white = mat(0xffffff, .5); M.black = mat(0x1a1a22, .6); M.pants = mat(0x2b3a55, .85); M.shoe = mat(0x1a1a1f, .6);
+  M.hair = mat(0x9a9a9a, .9); M.nose = mat(0xd9976c, .7); M.wood = mat(0xa8703c, .85); M.woodD = mat(0x7a4a2a, .9); M.sofa = mat(0xa14b4b, .9); M.sofaD = mat(0x7a3b3b, .9); M.metal = mat(0x8890a0, .35); M.blue = mat(0x2b6fd6, .6); M.red = mat(0xe63950, .55); M.gold = mat(0xf2c230, .4);
+  var G = null, world = null;
+
+  /* ---------- uncle builder ---------- */
+  function cyl(r1, r2, h, m, seg) { var g = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, h, seg || 12), m); g.castShadow = true; return g; }
+  function sph(r, m, sx, sy, sz) { var g = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 14), m); g.scale.set(sx || 1, sy || 1, sz || 1); g.castShadow = true; return g; }
+  function box(w, h, d, m) { var g = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); g.castShadow = true; g.receiveShadow = true; return g; }
+  function makeLimb(len1, len2, r, m1, m2, hand) {
+    var top = new THREE.Group(), a = cyl(r, r * .9, len1, m1); a.position.y = -len1 / 2; top.add(a);
+    var knee = new THREE.Group(); knee.position.y = -len1; top.add(knee);
+    var b = cyl(r * .9, r * .8, len2, m2); b.position.y = -len2 / 2; knee.add(b);
+    var j = sph(r * .95, m1); knee.add(j);
+    return { top: top, knee: knee, end: knee, len2: len2 };
+  }
+  function buildUncle(u) {
+    var root = new THREE.Group(), body = new THREE.Group(); root.add(body);
+    var shirtM = mat(u.shirtHex, .8); u.shirtM = shirtM;
+    var legs = [-1, 1].map(function (s) {
+      var l = makeLimb(.5, .45, .1, M.pants, M.pants); l.top.position.set(s * .15, .95, 0); body.add(l.top);
+      var shoe = box(.2, .1, .34, M.shoe); shoe.position.set(0, -l.len2 + .02, .06); l.knee.add(shoe); return l;
+    });
+    var torsoG = new THREE.Group(); torsoG.position.y = .95; body.add(torsoG);
+    var belly = sph(.46, shirtM, 1, 1.1, .9); belly.position.y = .42; torsoG.add(belly);
+    var belt = new THREE.Mesh(new THREE.TorusGeometry(.43, .035, 8, 24), mat(0x5a3a22, .7)); belt.rotation.x = Math.PI / 2; belt.position.y = .1; belt.scale.set(1, .9, 1); torsoG.add(belt);
+    if (u.big || u.t === 'stand') { var tie = box(.1, .42, .04, mat(0xc2374d, .7)); tie.position.set(0, .5, .41); torsoG.add(tie); }
+    else { for (var b = 0; b < 3; b++) { var bt = sph(.028, M.white); bt.position.set(0, .66 - b * .15, .43 - b * .008); torsoG.add(bt); } }
+    var arms = [-1, 1].map(function (s) {
+      var a = makeLimb(.36, .34, .08, shirtM, M.skin); a.top.position.set(s * .5, .86, 0); torsoG.add(a.top);
+      var hand = sph(.09, M.skin); hand.position.y = -a.len2 - .02; a.knee.add(hand); a.hand = hand; return a;
+    });
+    var neck = cyl(.1, .12, .18, M.skin); neck.position.y = .9; torsoG.add(neck);
+    var head = new THREE.Group(); head.position.y = 1.12; torsoG.add(head);
+    var skull = sph(.31, M.skin, 1, 1.02, 1); head.add(skull);
+    [-1, 1].forEach(function (s) {
+      var ear = sph(.075, M.skin, .6, 1, 1); ear.position.set(s * .31, -.02, 0); head.add(ear);
+      if (u.hat === 'none' || u.hat === 'band') { var hr = sph(.11, M.hair, .6, 1.2, 1); hr.position.set(s * .27, .12, -.02); head.add(hr); }
+      var eyeW = sph(.075, M.white); eyeW.position.set(s * .115, .07, .25); head.add(eyeW);
+      var pup = sph(.035, M.black); pup.position.set(s * .115 + s * .005, .065, .318); head.add(pup); pup.userData.s = s;
+      var rim = new THREE.Mesh(new THREE.TorusGeometry(.1, .014, 8, 20), M.black); rim.position.set(s * .115, .07, .27); head.add(rim);
+      var brow = box(.16, .035, .04, M.dark); brow.position.set(s * .115, .2, .27); brow.rotation.z = s * -.18; head.add(brow); brow.userData.s = s;
+      var must = sph(.12, M.dark, 1.15, .42, .6); must.position.set(s * .1, -.1, .28); must.rotation.z = s * -.22; head.add(must);
+      head.userData['eye' + s] = eyeW; head.userData['pup' + s] = pup; head.userData['brow' + s] = brow;
+    });
+    var bridge = box(.08, .014, .014, M.black); bridge.position.set(0, .07, .28); head.add(bridge);
+    var nose = sph(.065, M.nose); nose.position.set(0, -.02, .3); head.add(nose);
+    var mouth = sph(.07, mat(0x7a1f2b, .6), 1, .5, .4); mouth.position.set(0, -.2, .27); head.add(mouth);
+    if (u.hat === 'cap' || u.hat === 'hat') {
+      var hm = mat(u.hat === 'cap' ? 0xe8b422 : 0xf2f2ee, .7);
+      var dome = new THREE.Mesh(new THREE.SphereGeometry(.33, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2), hm); dome.position.y = .1; dome.castShadow = true; head.add(dome);
+      var brim = cyl(.4, .4, .03, mat(u.hat === 'cap' ? 0xc99a15 : 0xcfd3d8, .7), 24); brim.position.set(0, .1, u.hat === 'cap' ? .1 : 0); head.add(brim);
+    } else if (u.hat === 'band') { var hb = cyl(.325, .325, .08, M.red, 24); hb.position.y = .2; head.add(hb); }
+    var parts = { body: body, legs: legs, torso: torsoG, arms: arms, head: head, mouth: mouth };
+    u.parts = parts; u.root = root;
+    return root;
+  }
+
+  /* ---------- world builder ---------- */
+  function rowsFor(L) {
+    var n = L.plats.length, rows;
+    if (n === 1) rows = [{ y: L.bg === 'playground' ? 1.6 : 3.2, z: -3.5 }];
+    else if (n === 2) rows = [{ y: 5.4, z: -5.5 }, { y: 2.2, z: -3 }];
+    else rows = [{ y: 6.7, z: -6.5 }, { y: 4.2, z: -4.5 }, { y: 1.7, z: -2.5 }];
+    return rows;
+  }
+  function wx(lx) { return Math.max(-3.5, Math.min(3.5, (lx - 200) / 200 * 3.4)); }
+  function buildWorld(L, rows) {
+    var w = new THREE.Group(), pal = BGS[L.bg];
+    scene.background = gradTex(pal[0], pal[1]); scene.fog = new THREE.Fog(new THREE.Color(pal[1]).getHex(), 24, 70);
+    var floor = new THREE.Mesh(new THREE.PlaneGeometry(120, 90), new THREE.MeshStandardMaterial({ color: GROUND[L.bg], roughness: .95 })); floor.rotation.x = -Math.PI / 2; floor.position.set(0, 0, -25); floor.receiveShadow = true; w.add(floor);
+    var panelM = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .07, side: THREE.DoubleSide, depthWrite: false });
+    [-4.5, 4.5].forEach(function (x) { var p = new THREE.Mesh(new THREE.PlaneGeometry(14, 11), panelM); p.rotation.y = Math.PI / 2; p.position.set(x, 5.5, -3); w.add(p); });
+    rows.forEach(function (r) {
+      var slab = box(8.6, .3, 2.6, M.wood); slab.position.set(0, r.y - .15, r.z); w.add(slab);
+      var lip = box(8.6, .08, .2, M.woodD); lip.position.set(0, r.y - .02, r.z + 1.3); w.add(lip);
+      [-4.1, 4.1].forEach(function (x) { var post = cyl(.1, .1, r.y, M.woodD); post.position.set(x, r.y / 2, r.z - .9); w.add(post); var post2 = cyl(.1, .1, r.y, M.woodD); post2.position.set(x, r.y / 2, r.z + .9); w.add(post2); });
+    });
+    var rnd = rngOf(L.bg.length * 131 + 7), basic = function (c) { return new THREE.MeshStandardMaterial({ color: c, roughness: .9 }); };
+    var i, m;
+    if (L.bg === 'park' || L.bg === 'playground') {
+      for (i = 0; i < 9; i++) { var tx = (i - 4) * 4.2 + rnd() * 2, tz = -16 - rnd() * 12; var tr = cyl(.35, .45, 3, basic(0x6b4a2a)); tr.position.set(tx, 1.5, tz); w.add(tr); var lf = sph(2 + rnd(), basic(0x3f9a4a)); lf.position.set(tx, 4.2, tz); w.add(lf); }
+      for (i = 0; i < 4; i++) { var cl = new THREE.Group(); for (m = 0; m < 3; m++) { var cs = sph(1.2 + rnd() * .6, new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false })); cs.position.set(m * 1.3, rnd() * .3, 0); cl.add(cs); } cl.position.set(-14 + i * 9, 13 + rnd() * 3, -30); w.add(cl); }
+    } else if (L.bg === 'roof') {
+      for (i = 0; i < 14; i++) { var bh = 5 + rnd() * 10, bd = box(3 + rnd() * 2, bh, 3, basic(0x2a2150 + ((rnd() * 0x101010) | 0))); bd.position.set(-20 + i * 3.1, bh / 2, -14 - rnd() * 6); w.add(bd); }
+    } else if (L.bg === 'wedding' || L.bg === 'disco') {
+      for (i = 0; i < 28; i++) { var lc = L.bg === 'disco' ? new THREE.Color().setHSL(rnd(), .9, .6) : new THREE.Color(0xffd778); var lb = sph(.16, new THREE.MeshBasicMaterial({ color: lc, fog: false })); lb.position.set(-12 + i * .9, 8.5 + Math.sin(i * .9) * .6, -9); w.add(lb); }
+      var back = box(30, 14, .3, basic(L.bg === 'disco' ? 0x2a1252 : 0x6a1e3e)); back.position.set(0, 7, -14); w.add(back);
+    } else if (L.bg === 'bedroom') {
+      var moon = sph(1.6, new THREE.MeshBasicMaterial({ color: 0xffeaa8, fog: false })); moon.position.set(6, 9, -20); w.add(moon);
+      for (i = 0; i < 40; i++) { var st = sph(.06, new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false })); st.position.set(-18 + rnd() * 36, 3 + rnd() * 14, -24); w.add(st); }
+    } else if (L.bg === 'gym') {
+      for (i = 0; i < 3; i++) { var bar = cyl(.08, .08, 2.4, M.metal); bar.rotation.z = Math.PI / 2; bar.position.set(-9 + i * 9, 1.2, -12); w.add(bar); [-1.2, 1.2].forEach(function (d) { var pl = cyl(.7, .7, .25, mat(0x2b2f3a), 20); pl.rotation.z = Math.PI / 2; pl.position.set(-9 + i * 9 + d, 1.2, -12); w.add(pl); }); }
+      var wall = box(30, 14, .3, basic(0x838b99)); wall.position.set(0, 7, -15); w.add(wall);
+    } else {
+      var wl = box(30, 14, .3, basic(0xe8c89a)); wl.position.set(0, 7, -14); w.add(wl);
+      [[-5, 8], [5, 8]].forEach(function (p) { var fr = box(2.4, 3, .15, basic(0xfff6e4)); fr.position.set(p[0], p[1], -13.7); w.add(fr); var win = box(2, 2.6, .12, basic(0x9fd2f0)); win.position.set(p[0], p[1], -13.6); w.add(win); });
+    }
+    scene.add(w); return w;
+  }
+
+  /* ---------- game state ---------- */
+  var V = THREE.Vector3;
+  var LAUNCH = new V(0, .8, 5.2), GLV_R = .3, SPEED = 24, GRAV = 8, WALL = 4.4;
+  var launcher = null, glovesG = new THREE.Group(), fxG = new THREE.Group(), dots = [], parts = [], floats = [], bursts = [];
+  scene.add(glovesG, fxG);
+  function makeLauncher() {
+    var g = new THREE.Group(); g.position.copy(LAUNCH);
+    var base = cyl(.7, .9, .5, M.metal, 24); base.position.y = -.35; g.add(base);
+    var ring = new THREE.Mesh(new THREE.TorusGeometry(.7, .09, 10, 28), M.red); ring.rotation.x = Math.PI / 2; ring.position.y = -.12; g.add(ring);
+    var aimG = new THREE.Group(); g.add(aimG);
+    var barrel = cyl(.3, .36, 1.5, mat(0x3b3f4a, .5), 18); barrel.rotation.x = Math.PI / 2; barrel.position.z = .55; aimG.add(barrel);
+    var gloveG = makeGlove(1.15); gloveG.position.z = 1.5; aimG.add(gloveG);
+    for (var i = 0; i < 5; i++) { var c = new THREE.Mesh(new THREE.TorusGeometry(.2, .03, 6, 12), M.metal); c.position.z = .3 + i * .16; aimG.add(c); }
+    g.userData.aim = aimG; g.userData.loaded = gloveG; g.scale.setScalar(.7); scene.add(g); return g;
+  }
+  function makeGlove(s) {
+    var g = new THREE.Group(), body = sph(.3, M.red, 1, .95, 1.05); g.add(body);
+    var hi = sph(.13, mat(0xff6b81, .5), 1.2, .8, 1); hi.position.set(-.1, .13, .13); g.add(hi);
+    var th = sph(.12, M.red); th.position.set(-.27, -.05, .0); g.add(th);
+    var cuff = cyl(.2, .22, .16, M.white); cuff.rotation.x = Math.PI / 2; cuff.position.z = -.3; g.add(cuff);
+    g.scale.setScalar(s || 1); return g;
+  }
+  for (var di = 0; di < 18; di++) { var dm = new THREE.Mesh(new THREE.SphereGeometry(.09, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, fog: false })); dm.visible = false; scene.add(dm); dots.push(dm); }
+  for (var pi = 0; pi < 70; pi++) { var ps = new THREE.Sprite(new THREE.SpriteMaterial({ map: starTex, transparent: true, depthTest: false })); ps.visible = false; ps.renderOrder = 9; fxG.add(ps); parts.push({ s: ps, life: 0, t: 0, v: new V() }); }
+
+  function pick(a) { return a[(Math.random() * a.length) | 0]; }
+  function emitStars(p, n, gold) {
+    for (var i = 0; i < n; i++) {
+      var q = null; for (var k = 0; k < parts.length; k++) if (parts[k].life <= 0) { q = parts[k]; break; } if (!q) return;
+      q.life = .55 + Math.random() * .45; q.t = 0; q.s.visible = true; q.s.position.copy(p); var sz = (gold ? .5 : .38) * (.6 + Math.random() * .7); q.s.scale.set(sz, sz, 1);
+      q.v.set((Math.random() - .5) * 7, Math.random() * 5 + 1, (Math.random() - .5) * 7);
+    }
+  }
+  function addBurst(p, text) { var s = new THREE.Sprite(new THREE.SpriteMaterial({ map: burstTex(text), transparent: true, depthTest: false })); s.renderOrder = 11; s.position.copy(p); s.scale.set(.1, .1, 1); fxG.add(s); bursts.push({ s: s, t: 0 }); }
+  function floatText(p, text, color, size) { var s = new THREE.Sprite(new THREE.SpriteMaterial({ map: textTex(text, color, size || 70), transparent: true, depthTest: false })); s.renderOrder = 12; s.position.copy(p); s.scale.set(3.2, 1, 1); fxG.add(s); floats.push({ s: s, t: 0, y0: p.y }); }
+
+  function newGame(idx) {
+    if (G) { clearGame(); }
+    var L = getLevel(idx), rows = rowsFor(L);
+    world = buildWorld(L, rows);
+    G = { idx: idx, L: L, rows: rows, uncles: [], gloves: [], ammo: L.ammo, used: 0, t: 0, aim: null, over: false, won: false, endT: 0, shown: false, running: true, idleT: 0, shake: 0, flash: 0, recoil: 0, gid: 0, props: [], aimTarget: null };
+    L.uncles.forEach(function (d, i) { var u = mkUncle(d, i, L, rows); G.uncles.push(u); });
+    if (!launcher) launcher = makeLauncher(); launcher.visible = true; launcher.userData.aim.lookAt(new V(0, 3, -6)); launcher.userData.loaded.visible = true;
+    updateHud();
+  }
+  function clearGame() {
+    if (world) { scene.remove(world); world = null; }
+    G.uncles.forEach(function (u) { scene.remove(u.root); scene.remove(u.props); scene.remove(u.tag); if (u.extra) scene.remove(u.extra); if (u.seat) scene.remove(u.seat); });
+    G.gloves.forEach(function (g) { glovesG.remove(g.m); });
+    bursts.forEach(function (b) { fxG.remove(b.s); }); bursts.length = 0; floats.forEach(function (f) { fxG.remove(f.s); }); floats.length = 0;
+    parts.forEach(function (p) { p.life = 0; p.s.visible = false; });
+  }
+  function mkUncle(d, i, L, rows) {
+    var row = d.p >= 0 ? rows[d.p] : rows[rows.length - 1], big = !!d.big, s = big ? 1.3 : 1;
+    var u = { t: d.t, x: wx(d.x), y: row.y, z: row.z, base: row.y, s: s, dir: d.x < 200 ? 1 : -1, hp: d.hp || 1, maxHp: d.hp || 1, state: 'alive', t0: Math.random() * 6, phase: d.ph || 0, speed: (d.sp || 0) * .017, off: d.off || 0,
+      shirtHex: SHIRTS[i % SHIRTS.length], hat: ['none', 'cap', 'hat', 'none', 'band', 'cap'][i % 6], stun: 0, koT: 0, kv: new V(), spin: new V(), peekP: 1, big: big, label: big ? LABELS.boss : LABELS[d.t], pairs: {}, id: 'u' + i, extra: null, pivot: null, len: 4.4 };
+    var root = buildUncle(u); root.scale.setScalar(s); scene.add(root);
+    if (d.t === 'swing') { u.pivot = new V(wx(d.x), row.y + 6.1, row.z); u.rope = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new V(), new V(), new V(), new V()]), new THREE.LineBasicMaterial({ color: 0x4a3018 })); scene.add(u.rope); u.extra = u.rope; }
+    var props = new THREE.Group(); props.position.set(u.x, row.y, row.z); scene.add(props); u.props = props;
+    if (d.t === 'sit' || d.t === 'sleep') { var wd = d.t === 'sleep' ? 3.4 : 2.1; var seat = box(wd, .45, 1.0, M.sofa); seat.position.set(0, .225, 0); props.add(seat); var back = box(wd, .9, .3, M.sofaD); back.position.set(0, .7, -.5); props.add(back); [-1, 1].forEach(function (sd) { var ar = box(.25, .7, 1.0, M.sofaD); ar.position.set(sd * (wd / 2), .35, 0); props.add(ar); }); if (d.t === 'sleep') { var pil = sph(.3, M.white, 1.1, .6, .8); pil.position.set(-wd / 2 + .8, .65, .05); props.add(pil); } }
+    if (d.t === 'peek') { var cr = box(1.5, 1.2, .9, M.wood); cr.position.set(0, .6, .62); props.add(cr); var cb = box(1.52, .1, .92, M.woodD); cb.position.set(0, .6, .62); props.add(cb); }
+    if (d.t === 'jump') { var tr = cyl(1.0, 1.0, .1, M.blue, 28); tr.position.y = .5; props.add(tr); [0, 1, 2, 3].forEach(function (k) { var lg = cyl(.05, .05, .5, M.metal); lg.position.set(Math.cos(k * 1.57) * .85, .25, Math.sin(k * 1.57) * .85); props.add(lg); }); }
+    if (d.t === 'swing') { var fr = new THREE.Group(); [-1, 1].forEach(function (sd) { var lg = cyl(.1, .1, 6.2, M.woodD); lg.position.set(sd * 2.7 + u.x, row.y + 3.1 - 0, 0); lg.rotation.z = -sd * .12; fr.add(lg); }); var beam = cyl(.1, .1, 5.8, M.woodD); beam.rotation.z = Math.PI / 2; beam.position.set(u.x, row.y + 6.15, 0); fr.add(beam); fr.position.set(0, 0, 0); props.position.set(0, 0, row.z); props.add(fr); fr.position.x = 0;
+      var seatS = box(1.3, .12, .5, M.wood); u.seat = seatS; scene.add(seatS); u.extra2 = seatS; }
+    u.tag = tagSprite(u.label, u.hp, u.maxHp); scene.add(u.tag);
+    return u;
+  }
+  function aliveCount() { return G.uncles.filter(function (u) { return u.state === 'alive' || u.state === 'stun'; }).length; }
+  function updateHud() { if (!G) return; $('lvlName').textContent = (G.idx + 1) + '. ' + G.L.name; $('gl').textContent = G.ammo; $('un').textContent = aliveCount(); }
+
+  /* hit spheres in world space */
+  function hitSpheres(u) {
+    var s = u.s, x = u.x, y = u.y, z = u.z, out = [];
+    if (u.state === 'ko') return [{ x: u.root.position.x, y: u.root.position.y + .95 * s, z: u.root.position.z, r: .8 * s }];
+    switch (u.t) {
+      case 'sit': out.push({ x: x, y: y + 1.1, z: z, r: .7 * s }, { x: x, y: y + 1.75, z: z, r: .4 * s }); break;
+      case 'sleep': out.push({ x: x - .9, y: y + 1.0, z: z + .05, r: .6 }, { x: x, y: y + 1.0, z: z + .05, r: .6 }, { x: x + .9, y: y + 1.0, z: z + .05, r: .6 }); break;
+      case 'peek': if (u.peekP < .5) return []; var kk = .4 + .6 * u.peekP; out.push({ x: x, y: y + 2.0 * kk, z: z, r: .45 }, { x: x, y: y + 1.45 * kk, z: z, r: .5 }); break;
+      default: out.push({ x: x, y: y + 1.35 * s, z: z, r: .62 * s }, { x: x, y: y + 2.05 * s, z: z, r: .4 * s });
+    }
+    return out;
+  }
+  function gloveHitsUncle(gp, u) { var sp = hitSpheres(u); for (var i = 0; i < sp.length; i++) { var dx = gp.x - sp[i].x, dy = gp.y - sp[i].y, dz = gp.z - sp[i].z, rr = sp[i].r + GLV_R; if (dx * dx + dy * dy + dz * dz < rr * rr) return sp[i]; } return null; }
+
+  function hitUncle(u, dir, gid, fromChain, at) {
+    if (u.state !== 'alive' && u.state !== 'stun') return;
+    u.hp--; sHit(); G.shake = .18;
+    var p = at ? new V(at.x, at.y, at.z) : new V(u.x, u.y + 1.5, u.z); p.z += .6;
+    addBurst(p, pick(['POW!', 'BAM!', 'WHAP!', 'BOP!', 'SMACK!'])); emitStars(p, 9, false);
+    updateTag(u);
+    if (u.hp > 0) { u.state = 'stun'; u.stun = .55; u.x += Math.sign(dir.x || 1) * .15; floatText(new V(u.x, u.y + 2.9, u.z + .5), 'Ouch! ' + u.hp + ' left', '#ffffff', 64); return; }
+    u.state = 'ko'; u.koT = 0; var d = dir.clone().normalize(); u.kv.copy(d).multiplyScalar(15);
+    u.spin.set((Math.random() - .5) * 6, (Math.random() - .5) * 6, (d.x >= 0 ? -1 : 1) * 9);
+    sKO(); G.shake = .3; G.flash = .09; u.pairs[gid] = 1;
+    var g = G.gloves.filter(function (q) { return q.id === gid; })[0];
+    if (g) { g.kills++; if (g.kills === 2) floatText(new V(0, 6, 2), 'DOUBLE KO!', '#ffd166', 80); if (g.kills >= 3) floatText(new V(0, 6, 2), 'TRIPLE KO!', '#ffd166', 80); }
+    if (fromChain) floatText(new V(p.x, p.y + 1.2, p.z), 'CHAIN!', '#ff8fa3', 76);
+    floatText(new V(p.x, p.y + .5, p.z), 'KO!', '#ffd166', 80); emitStars(p, 18, true); updateHud();
+  }
+  function updateTag(u) { scene.remove(u.tag); u.tag.material.map.dispose(); u.tag = tagSprite(u.label, u.hp, u.maxHp); scene.add(u.tag); }
+
+  /* ---------- update ---------- */
+  function update(dt, tm) {
+    if (!G || !G.running) return;
+    G.t += dt;
+    G.uncles.forEach(function (u) { updateUncle(u, dt, tm); });
+    var subs = 4;
+    G.gloves.forEach(function (g) {
+      for (var k = 0; k < subs; k++) {
+        var d = dt / subs; g.p.addScaledVector(g.v, d); g.v.y -= GRAV * d; g.life -= d;
+        if (g.p.x < -WALL) { g.p.x = -WALL; g.v.x = Math.abs(g.v.x) * .85; g.b++; sBounce(); } else if (g.p.x > WALL) { g.p.x = WALL; g.v.x = -Math.abs(g.v.x) * .85; g.b++; sBounce(); }
+        if (g.p.y > 11) { g.p.y = 11; g.v.y = -Math.abs(g.v.y) * .8; g.b++; }
+        if (g.p.y < .3) { g.p.y = .3; g.v.y = Math.abs(g.v.y) * .6; g.b++; sBounce(); }
+        if (!g.spent) for (var i = 0; i < G.uncles.length; i++) {
+          var u = G.uncles[i]; if (u.state !== 'alive') continue; var hs = gloveHitsUncle(g.p, u);
+          if (hs) { hitUncle(u, g.v, g.id, false, hs); g.spent = true; g.v.multiplyScalar(-.15); g.v.y = 2; g.life = Math.min(g.life, .5); break; }
+        }
+      }
+      g.m.position.copy(g.p); g.m.rotation.x += dt * 9; g.m.rotation.z += dt * 5; g.m.visible = true;
+      if (g.p.z < -14 || g.p.z > 12 || g.b > 5) g.life = 0;
+    });
+    G.gloves = G.gloves.filter(function (g) { if (g.life <= 0) glovesG.remove(g.m); return g.life > 0; });
+    parts.forEach(function (q) { if (q.life <= 0) return; q.t += dt; if (q.t >= q.life) { q.life = 0; q.s.visible = false; return; } q.v.y -= 9 * dt; q.s.position.addScaledVector(q.v, dt); q.s.material.opacity = 1 - q.t / q.life; });
+    bursts = bursts.filter(function (b) { b.t += dt; var p = b.t / .36; if (p >= 1) { fxG.remove(b.s); return false; } var sc2 = (.5 + Math.min(1, p * 4) * .9) * 2.1; b.s.scale.set(sc2, sc2, 1); b.s.material.opacity = 1 - p * p; return true; });
+    floats = floats.filter(function (f) { f.t += dt; if (f.t > .95) { fxG.remove(f.s); return false; } f.s.position.y = f.y0 + f.t * 1.3; f.s.material.opacity = 1 - f.t / .95; return true; });
+    if (G.shake > 0) G.shake -= dt; if (G.flash > 0) G.flash -= dt; if (G.recoil > 0) G.recoil -= dt;
+    if (!G.over) {
+      if (aliveCount() === 0) endGame(true);
+      else if (G.ammo === 0 && G.gloves.length === 0 && !G.uncles.some(function (u) { return u.state === 'ko' && u.koT < 1.4; })) { G.idleT += dt; if (G.idleT > 1) endGame(false); } else G.idleT = 0;
+    } else { G.endT += dt; if (G.endT > 1.1 && !G.shown) { G.shown = true; showResult(); } }
+    /* launcher aim */
+    if (launcher) { var tgt = G.aimTarget || new V(0, 3, -6); launcher.userData.aim.lookAt(tgt); var rc = G.recoil > 0 ? G.recoil / .16 : 0; launcher.userData.aim.position.z = -rc * .35; launcher.userData.loaded.visible = G.ammo > 0 && !G.over; }
+    updateAimDots();
+    camera.position.set(CAM.x + (G.shake > 0 ? (Math.random() - .5) * G.shake * .5 : 0), CAM.y + (G.shake > 0 ? (Math.random() - .5) * G.shake * .5 : 0), CAM.z); camera.lookAt(LOOK);
+  }
+  function updateUncle(u, dt, tm) {
+    u.t0 += dt;
+    if (u.state === 'ko') {
+      u.koT += dt; u.root.position.addScaledVector(u.kv, dt); u.root.rotation.x += u.spin.x * dt; u.root.rotation.y += u.spin.y * dt; u.root.rotation.z += u.spin.z * dt;
+      var rp = u.root.position, kc = { x: rp.x, y: rp.y + .95 * u.s, z: rp.z };
+      G.uncles.forEach(function (o) { if (o === u || o.state !== 'alive' || u.pairs[o.id]) return; var hs = hitSpheres(o); for (var i = 0; i < hs.length; i++) { var dx = kc.x - hs[i].x, dy = kc.y - hs[i].y, dz = kc.z - hs[i].z, rr = hs[i].r + .7 * u.s; if (dx * dx + dy * dy + dz * dz < rr * rr && u.koT < 1.5) { u.pairs[o.id] = 1; hitUncle(o, u.kv.clone(), -1, true, hs[i]); break; } } });
+      poseUncle(u, tm);
+      u.tag.visible = false;
+      if (Math.abs(rp.x) > 16 || rp.y > 18 || rp.y < -8 || rp.z < -34 || rp.z > 16 || u.koT > 3) { u.state = 'gone'; u.root.visible = false; if (u.props) u.props.visible = true; }
+      return;
+    }
+    if (u.state === 'gone') return;
+    if (u.state === 'stun') { u.stun -= dt; if (u.stun <= 0) u.state = 'alive'; }
+    else switch (u.t) {
+      case 'run': u.x += u.dir * u.speed * dt; u.phase += dt * u.speed * 3.2; if (u.x > 3.4) { u.x = 3.4; u.dir = -1; } else if (u.x < -3.4) { u.x = -3.4; u.dir = 1; } break;
+      case 'jump': u.phase += dt * 3.3; u.y = u.base + .5 + Math.abs(Math.sin(u.phase)) * 2.4; break;
+      case 'dance': u.phase += dt * 6; break;
+      case 'peek': var cyc = (u.t0 + u.off) % 3.4; u.peekP = cyc < .3 ? cyc / .3 : cyc < 1.7 ? 1 : cyc < 2.0 ? (2.0 - cyc) / .3 : 0; break;
+      case 'swing': u.phase += dt * 1.5; var a = Math.sin(u.phase) * .3; u.sw = a; u.x = u.pivot.x + Math.sin(a) * u.len; u.y = u.pivot.y - Math.cos(a) * u.len - .95; break;
+      default: u.phase += dt * 3;
+    }
+    poseUncle(u, tm);
+    var hs = hitSpheres(u), top = hs.length ? Math.max.apply(null, hs.map(function (q) { return q.y + q.r; })) : u.y + 1.5;
+    u.tag.position.set(u.x, (u.t === 'peek' ? u.y + 2.6 * (.4 + .6 * u.peekP) : top + .55), u.z + .3); u.tag.visible = !(u.t === 'peek' && u.peekP < .5);
+  }
+
+  function poseUncle(u, tm) {
+    var P = u.parts, r = u.root, ph = u.phase, st = u.state, ko = st === 'ko', s = u.s;
+    var legA = [0, 0], legK = [0, 0], armZ = [-.14, .14], armX = [0, 0], armE = [0, 0], lean = 0, hop = 0, hip = 0, headZ = 0, talk = false, mood = 'smug', torsoZ = 0;
+    var yaw = 0;
+    if (ko) {
+      var f = Math.sin(tm / 70); legA = [.7 + f * .4, -.7 - f * .4]; legK = [.4, .4]; armZ = [-2.2 - f * .4, 2.2 + f * .4]; mood = 'ko';
+    } else if (st === 'stun') {
+      armZ = [-.9, .9]; armX = [-.4, -.4]; headZ = Math.sin(tm / 45) * .3; torsoZ = Math.sin(tm / 55) * .12; mood = 'hurt';
+    } else switch (u.t) {
+      case 'stand': talk = Math.sin(tm / 1100 + u.t0) > .2; armX[1] = talk ? -1.0 + Math.sin(tm / 130) * .5 : 0; armE[1] = talk ? -.7 : 0; armZ[1] = talk ? .1 : .14; mood = talk ? 'talk' : 'smug'; break;
+      case 'sit': hip = -.45; legA = [-1.5, -1.5]; legK = [1.5, 1.5]; armX = [-.5, -1.2 + Math.sin(tm / 600) * .08]; armE = [-.5, -.8]; armZ = [-.1, .1]; mood = Math.sin(tm / 1400 + u.t0) > .5 ? 'talk' : 'smug'; break;
+      case 'run': var s1 = Math.sin(ph); legA = [-s1 * .95, s1 * .95]; legK = [.35 + Math.max(0, s1) * .9, .35 + Math.max(0, -s1) * .9]; armX = [s1 * .9, -s1 * .9]; armE = [-.9, -.9]; armZ = [-.1, .1]; lean = .2; hop = Math.abs(Math.cos(ph)) * .1; mood = 'talk'; yaw = u.dir * Math.PI / 2; break;
+      case 'dance': var d = Math.sin(ph); legA = [-d * .4, d * .4]; legK = [Math.max(0, d) * .6, Math.max(0, -d) * .6]; armZ = [-(2.5 + Math.sin(ph * 2) * .5), 2.5 - Math.sin(ph * 2) * .5]; torsoZ = d * .15; hop = Math.abs(d) * .25; headZ = d * .2; mood = 'talk'; break;
+      case 'jump': var air = u.y - u.base > .7; legA = air ? [-.9, -.5] : [0, 0]; legK = air ? [1.3, 1.1] : [0, 0]; armZ = [-2.7, 2.7]; mood = 'talk'; break;
+      case 'swing': var sw = u.sw || 0; legA = [-.5 - sw * 1.2, -.5 - sw * 1.2]; legK = [.7, .7]; armZ = [-2.5, 2.5]; mood = 'talk'; r.rotation.z = -sw * .5; break;
+      case 'sleep': mood = 'sleep'; armZ = [-.2, .2]; break;
+      case 'peek': mood = u.peekP > .8 ? 'talk' : 'smug'; armX[1] = -1.2 + Math.sin(tm / 140) * .5; armE[1] = -.4; armZ[1] = .3; break;
+    }
+    if (!ko) {
+      r.rotation.set(0, yaw, u.t === 'swing' ? r.rotation.z : 0);
+      if (u.t === 'sleep') { r.rotation.set(0, 0, Math.PI / 2); r.position.set(u.x + .95 * s, u.base + .5 + .5 * s * .9, u.z + .05); }
+      else if (u.t === 'peek') { r.position.set(u.x, u.y, u.z); r.scale.set(s, s * (.4 + .6 * u.peekP), s); r.visible = u.peekP > .02; }
+      else r.position.set(u.x, u.y, u.z);
+      if (u.t === 'sit') r.position.y = u.y + .45 * 0;
+      r.visible = true;
+    }
+    P.body.position.y = hip + hop; P.body.rotation.x = lean; P.torso.rotation.z = torsoZ;
+    for (var i = 0; i < 2; i++) {
+      P.legs[i].top.rotation.x = legA[i]; P.legs[i].knee.rotation.x = legK[i];
+      var sd = i === 0 ? -1 : 1;
+      P.arms[i].top.rotation.set(armX[i], 0, armZ[i]); P.arms[i].knee.rotation.x = armE[i];
+    }
+    P.head.rotation.z = headZ;
+    var hd = P.head.userData, ko2 = mood === 'ko' || mood === 'hurt', sl = mood === 'sleep';
+    [-1, 1].forEach(function (sg) { hd['pup' + sg].visible = !(ko2 || sl); hd['eye' + sg].scale.set(1, sl || ko2 ? .18 : 1, 1); hd['brow' + sg].rotation.z = sg * (ko2 ? .35 : -.18); });
+    var mo = mood === 'talk' ? .35 + Math.abs(Math.sin(tm / 90)) * .9 : ko2 ? 1.4 : sl ? .5 + Math.sin(tm / 400) * .2 : .5;
+    P.mouth.scale.set(1, mo * .6, .4);
+    if (u.t === 'sit' || u.t === 'sleep') P.body.position.y = hip;
+    if (u.t === 'swing' && u.seat) { u.seat.position.set(u.x, u.y + .95 - .08, u.z); u.seat.rotation.z = -(u.sw || 0) * .5; var a2 = u.rope.geometry.attributes.position; a2.setXYZ(0, u.pivot.x - .55, u.pivot.y, u.z); a2.setXYZ(1, u.x - .55, u.y + .95, u.z); a2.setXYZ(2, u.pivot.x + .55, u.pivot.y, u.z); a2.setXYZ(3, u.x + .55, u.y + .95, u.z); a2.needsUpdate = true; u.rope.geometry.setIndex([0, 1, 2, 3]); u.rope.geometry.computeBoundingSphere(); u.rope.material.needsUpdate = false; }
+    if (u.t === 'jump') u.props.position.set(u.x, u.base, u.z);
+  }
+
+  /* ---------- input / aiming ---------- */
+  var ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  function aimFrom(e) {
+    var r = cvs.getBoundingClientRect(); ndc.set((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height * 2 - 1));
+    ray.setFromCamera(ndc, camera); var o = ray.ray.origin, d = ray.ray.direction;
+    var t = (-5 - o.z) / d.z; var p = o.clone().addScaledVector(d, t); if (!(t > 0)) p = new V(0, 3, -5);
+    p.y = Math.max(p.y, LAUNCH.y + .6); return p;
+  }
+  function dirTo(p) { var d = p.clone().sub(LAUNCH); if (d.z > -1) d.z = -1; return d.normalize(); }
+  cvs.addEventListener('pointerdown', function (e) { e.preventDefault(); if (!G || !G.running || G.over) return; try { cvs.setPointerCapture(e.pointerId); } catch (x) {} G.aiming = true; G.aimTarget = aimFrom(e); });
+  cvs.addEventListener('pointermove', function (e) { if (G && G.aiming) G.aimTarget = aimFrom(e); });
+  cvs.addEventListener('pointerup', function (e) { if (!G || !G.aiming) return; G.aiming = false; var p = aimFrom(e); G.aimTarget = p; fire(dirTo(p)); });
+  cvs.addEventListener('pointercancel', function () { if (G) G.aiming = false; });
+  function fire(dir) {
+    if (!G || G.over || G.ammo <= 0 || G.gloves.some(function (g) { return !g.spent; })) return;
+    G.ammo--; G.used++; G.recoil = .16; sFire();
+    var m = makeGlove(1); var p = LAUNCH.clone().addScaledVector(dir, 1.9); m.position.copy(p); glovesG.add(m);
+    G.gloves.push({ id: ++G.gid, p: p, v: dir.clone().multiplyScalar(SPEED), m: m, life: 4, b: 0, spent: false, kills: 0 }); updateHud();
+  }
+  function updateAimDots() {
+    var on = G && G.aiming && G.ammo > 0 && !G.over && G.aimTarget;
+    if (!on) { dots.forEach(function (d) { d.visible = false; }); return; }
+    var dir = dirTo(G.aimTarget), p = LAUNCH.clone().addScaledVector(dir, 1.9), v = dir.clone().multiplyScalar(SPEED), dt = .05;
+    for (var i = 0; i < dots.length; i++) { p.addScaledVector(v, dt); v.y -= GRAV * dt; if (p.x < -WALL) { p.x = -WALL; v.x = Math.abs(v.x); } else if (p.x > WALL) { p.x = WALL; v.x = -Math.abs(v.x); } dots[i].position.copy(p); dots[i].visible = p.z > -13 && p.y > .2; dots[i].material.opacity = 1 - i / dots.length; var sc3 = 1 - i * .03; dots[i].scale.setScalar(sc3); }
+  }
+
+  /* ---------- screens ---------- */
+  function show(html) { ov.innerHTML = html; ov.hidden = false; }
+  function hide() { ov.hidden = true; ov.innerHTML = ''; }
+  function starStr(n) { var s = ''; for (var i = 0; i < 3; i++) s += i < n ? '★' : '<span class="off">★</span>'; return s; }
+  var PAGE = null;
+  function highest() { var h = -1; Object.keys(save.stars).forEach(function (k) { if ((save.stars[k] || 0) > 0 && +k > h) h = +k; }); return h; }
+  function menu() {
+    if (G) G.running = false; $('hud').hidden = true;
+    var next = Math.min(TOTAL - 1, highest() + 1), per = 20, pages = Math.ceil(TOTAL / per);
+    if (PAGE === null) PAGE = Math.floor(next / per);
+    PAGE = Math.max(0, Math.min(pages - 1, PAGE));
+    var from = PAGE * per, tiles = '';
+    for (var i = from; i < Math.min(TOTAL, from + per); i++) {
+      var ok = i <= next, st = save.stars[i] || 0;
+      tiles += '<button class="tile' + (i === next ? ' cur' : '') + '" data-lv="' + i + '"' + (ok ? '' : ' disabled') + ' aria-label="Level ' + (i + 1) + '"><span class="n">' + (ok ? (i + 1) : '&#128274;') + '</span><span class="st">' + (ok ? starStr(st) : '') + '</span></button>';
+    }
+    show('<div class="card"><h1>Annoying Uncle Punch 3D</h1><p>Aim, release, and launch the boxing glove into the scene. Knock every uncle out before you run out of gloves. ' + TOTAL + ' levels.</p>' +
+      '<button class="btn" id="cont" type="button">Continue: Level ' + (next + 1) + '</button>' +
+      '<div class="row nav"><button class="btn ghost" id="pv" type="button" aria-label="Previous page">&lsaquo;</button><div class="big">Levels ' + (from + 1) + '-' + Math.min(TOTAL, from + per) + '</div><button class="btn ghost" id="nx2" type="button" aria-label="Next page">&rsaquo;</button></div>' +
+      '<div class="grid">' + tiles + '</div>' +
+      '<div class="row jump"><input id="jmp" type="number" inputmode="numeric" min="1" max="' + TOTAL + '" placeholder="Level number"><button class="btn alt" id="jgo" type="button">Go</button></div></div>');
+    ov.querySelectorAll('.tile').forEach(function (b) { b.addEventListener('click', function () { brief(+b.getAttribute('data-lv')); }); });
+    $('cont').addEventListener('click', function () { brief(next); });
+    $('pv').addEventListener('click', function () { PAGE--; menu(); });
+    $('nx2').addEventListener('click', function () { PAGE++; menu(); });
+    $('jgo').addEventListener('click', function () { var v = parseInt($('jmp').value, 10); if (!(v >= 1)) return; v = Math.min(TOTAL, v) - 1; PAGE = Math.floor(Math.min(v, next) / per); menu(); });
+  }
+  function brief(i) {
+    var L = getLevel(i), types = {}; L.uncles.forEach(function (u) { types[LABELS[u.big ? 'boss' : u.t]] = 1; });
+    show('<div class="card"><h2>Level ' + (i + 1) + '</h2><div class="big">' + L.name + '</div><p>' + Object.keys(types).join(', ') + '.</p><ul class="rules"><li>Press and drag to aim, release to launch.</li><li>You have <b>' + L.ammo + ' gloves</b> for <b>' + L.uncles.length + ' uncle' + (L.uncles.length > 1 ? 's' : '') + '</b>. Gloves bounce off the side walls.</li><li>A knocked-out uncle flies off and can crash into others. Chain hits save gloves.</li></ul><div class="row"><button class="btn ghost" id="bk" type="button">Levels</button><button class="btn" id="go" type="button">Start</button></div></div>');
+    $('bk').addEventListener('click', menu); $('go').addEventListener('click', function () { start(i); });
+  }
+  function start(i) { hide(); $('hud').hidden = false; newGame(i); }
+  function endGame(win) { if (G.over) return; G.over = true; G.won = win; G.endT = 0; if (win) { sWin(); emitStars(new V(0, 5, 2), 40, true); } else sLose(); }
+  function showResult() {
+    var i = G.idx, n = needHits(G.L);
+    if (G.won) {
+      var st = G.used <= n ? 3 : G.used <= n + 2 ? 2 : 1;
+      if ((save.stars[i] || 0) < st) { save.stars[i] = st; persist(); }
+      var last = i >= TOTAL - 1;
+      show('<div class="card"><h2>' + (last ? 'Peace at last!' : 'Level ' + (i + 1) + ' clear!') + '</h2><div class="stars" aria-label="' + st + ' stars">' + starStr(st) + '</div><div class="big">' + G.used + ' glove' + (G.used > 1 ? 's' : '') + ' used</div><div class="row"><button class="btn ghost" id="lv" type="button">Levels</button><button class="btn alt" id="rt" type="button">Replay</button>' + (last ? '' : '<button class="btn" id="nx" type="button">Next</button>') + '</div></div>');
+      if (!last) $('nx').addEventListener('click', function () { brief(i + 1); });
+    } else {
+      show('<div class="card"><h2>Out of gloves</h2><div class="big">' + aliveCount() + ' uncle' + (aliveCount() > 1 ? 's' : '') + ' still annoying</div><div class="row"><button class="btn ghost" id="lv" type="button">Levels</button><button class="btn" id="rt" type="button">Try again</button></div></div>');
+    }
+    $('lv').addEventListener('click', menu); $('rt').addEventListener('click', function () { start(i); });
+  }
+  $('menuBtn').addEventListener('click', menu);
+
+  var last = performance.now();
+  function frame(now) { requestAnimationFrame(frame); var dt = Math.min(.05, (now - last) / 1000); last = now; if (document.hidden) return; update(dt, now); renderer.render(scene, camera); }
+  scene.background = gradTex('#5a2f9a', '#1d0b3a');
+  menu(); requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>
